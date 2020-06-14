@@ -113,7 +113,7 @@ if __name__ == "__main__":
     inputParms = {}
     inputParms['households'] = dict(size=100, quantiles=[0.1, 0.25, 0.5, 0.75, 0.9])
     inputParms['housings'] = dict(size=100, quantiles=[0.25, 0.5, 0.75])
-    inputParms['income'] = dict(average=50000, stdev=750, gini=0.35)
+    inputParms['income'] = dict(average=50000, gini=0.35)
     inputParms['sqft'] = dict(average=1750, stdev=750)
     inputParms['yearbuilt'] = dict(average=1980, stdev=10)
     main(**inputParms)
