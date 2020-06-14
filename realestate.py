@@ -3,8 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 from scipy.optimize import fsolve
-from scipy.stats import norm
-from itertools import product
+from scipy.stats import norm, uniform
 
 from parsers import DictorListParser
 from specs import specs_fromfile
@@ -33,25 +32,28 @@ studentloan = lambda x, n: Loan('studentloan', balance=x, duration=n, rate=0.07,
 
 lornez_function = lambda x, a: x * math.exp(-a * (1-x))
 lornez_integral = lambda a: (math.exp(-a) + a - 1) / (a**2)
+norm_pdf = lambda x, *args, average, stdev, **kwargs: norm.ppf(x, loc=average, scale=stdev)
+uniform_pdf = lambda x, *args, lower, upper, **kwargs: uniform.ppf(x, loc=lower, scale=lower+upper)
 
-def lornez(average, gini_index, *args, quantiles, function, integral, **kwargs):  
+def lornez(*args, average, gini, quantiles, function, integral, **kwargs):  
     assert hasattr(function, '__call__') and hasattr(integral, '__call__')
     assert isinstance(quantiles, (list, np.ndarray))
-    assert 0 <= gini_index <= 1
-    zero_function = lambda a: 1 - 2 * integral(a) - gini_index
+    assert 0 <= gini <= 1
+    zero_function = lambda a: 1 - 2 * integral(a) - gini
     coefficient = fsolve(zero_function, 1)
     quantiles = np.array([0, *quantiles, 1])
     sizes = np.diff(quantiles)    
     shares = np.diff(np.vectorize(lambda x: function(x, coefficient))(quantiles)) 
-    return sizes, shares * average / sizes
+    return sizes.astype('float64'), (shares * average / sizes).astype('int64')
 
-def normal(average, stdev, *args, quantiles, **kwargs):
+def distribution(*args, quantiles, function, **kwargs):
     assert isinstance(quantiles, (list, np.ndarray))
+    assert hasattr(function, '__call__')
     quantiles = np.array([0, *quantiles, 1])
     sizes = np.diff(quantiles)  
     avgquantiles = (quantiles[1:] + quantiles[:-1])/2
-    avgvalues = norm.ppf(avgquantiles, loc=average, scale=stdev)
-    return sizes, avgvalues
+    avgvalues = function(avgquantiles, **kwargs)
+    return sizes.astype('float64'), avgvalues.astype('int64')
 
 Space = concept('space', ['unit', 'sqft'])
 Quality = concept('quality', ['yearbuilt'])
@@ -75,31 +77,46 @@ financials = dict(savings=0.2, risktolerance=1, discountrate=discountrate)
 housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
 
-
-def createHouseholds(incomes):
-    for income in incomes:
-        yield Household.create(date=date, household=household, financials=dict(income=income, **financials))
-
-def createHousings(sqfts, yearbuilts):
-    for sqft, yearbuilt in product(sqfts, yearbuilts):
-        yield Housing.create(geography=geography, date=date, housing=dict(sqft=sqft, yearbuilt=yearbuilt, **housing), neighborhood=neighborhood, **prices)
+createHousing = lambda count, sqft, yearbuilt: Housing.create(geography=geography, date=date, housing=dict(count=count, sqft=sqft, yearbuilt=yearbuilt, **housing), neighborhood=neighborhood, **prices)
+createHousehold = lambda count, income: Household.create(date=date, household=dict(count=count, **household), financials=dict(income=income, **financials))
 
 
-def main(*args, incomes, sqfts, yearbuilts, **kwargs):
-    myEconomy = Economy(**economy)
-    myHouseholds = [household for household in createHouseholds(incomes)]
-    myHousings = [housing for housing in createHousings(sqfts, yearbuilts)]
+def createHousings(size, density, sqfts, yearbuilts):
+    assert all([isinstance(item, np.ndarray) for item in (density, sqfts, yearbuilts,)])
+    assert density.shape == sqfts.shape == yearbuilts.shape
+    for ijx, iy, jy in zip(density.flatten(), sqfts.flatten(), yearbuilts.flatten()): 
+        yield createHousing(np.round(ijx * size, decimals=0).astype('int64'), iy, jy)
+                
+def createHouseholds(size, density, incomes):
+    assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
+    assert density.shape == incomes.shape
+    for x, y in zip(density.flatten(), incomes.flatten()):
+        yield createHousehold(np.round(x * size, decimals=0).astype('int64'), y)
+        
+
+def main(*args, households, housings, income, sqft, yearbuilt, **kwargs):    
+    xinc, yinc = lornez(**income, quantiles=households['quantiles'], function=lornez_function, integral=lornez_integral)
+    xsqft, ysqft = distribution(**sqft, quantiles=housings['quantiles'], function=norm_pdf)
+    xyrblt, yyrblt = distribution(**yearbuilt, quantiles=housings['quantiles'], function=norm_pdf)    
+  
+    ixHG, jxHG = np.meshgrid(xsqft, xyrblt)
+    iyHG, jyHG = np.meshgrid(ysqft, yyrblt)
+    xHG = np.multiply(ixHG, jxHG)
+
+    households = [item for item in createHouseholds(households['size'], xinc, yinc)]
+    housings = [item for item in createHousings(housings['size'], xHG, iyHG, jyHG)]
+    for item in households: print(str(item))
+    for item in housings: print(str(item))
     
-
+    
 if __name__ == "__main__": 
-    quantiles = [0.1, 0.25, 0.5, 0.75, 0.9]
-    x, y = lornez(50000, 0.35, quantiles=quantiles, function=lornez_function, integral=lornez_integral)
-    print(x, y)
-    x, y = normal(1750, 750, quantiles=quantiles)
-    print(x, y)    
-    x, y = normal(1985, 10, quantiles=quantiles)
-    print(x, y)
-    
+    inputParms = {}
+    inputParms['households'] = dict(size=100, quantiles=[0.1, 0.25, 0.5, 0.75, 0.9])
+    inputParms['housings'] = dict(size=100, quantiles=[0.25, 0.5, 0.75])
+    inputParms['income'] = dict(average=50000, stdev=750, gini=0.35)
+    inputParms['sqft'] = dict(average=1750, stdev=750)
+    inputParms['yearbuilt'] = dict(average=1980, stdev=10)
+    main(**inputParms)
 
 
     
