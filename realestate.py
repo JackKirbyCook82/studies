@@ -12,6 +12,7 @@ from variables import Variables, Date, Geography
 from realestate.economy import Economy, Rate, Loan
 from realestate.households import Household
 from realestate.housing import Housing
+from realestate.markets import Rental_Property_Market
 
 pd.set_option('display.max_columns', 10)
 pd.set_option("display.precision", 1)
@@ -105,8 +106,7 @@ def main(*args, households, housings, income, sqft, yearbuilt, **kwargs):
 
     households = [item for item in createHouseholds(households['size'], xinc, yinc)]
     housings = [item for item in createHousings(housings['size'], xHG, iyHG, jyHG)]
-    for item in households: print(str(item))
-    for item in housings: print(str(item))
+    market = Rental_Property_Market(households=households, housing=housing)
     
     
 if __name__ == "__main__": 
