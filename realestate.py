@@ -9,16 +9,16 @@ from parsers import DictorListParser
 from specs import specs_fromfile
 from utilities.concepts import concept
 from variables import Variables, Date, Geography
-from realestate.economy import Economy, Rate, Loan
+from realestate.economy import Economy, Rate, Loan, Broker
 from realestate.households import Household
 from realestate.housing import Housing
-from realestate.markets import Rental_Property_Market
+from realestate.markets import Personal_Property_Market
 
 pd.set_option('display.max_columns', 10)
-pd.set_option("display.precision", 1)
+pd.set_option("display.precision", 0)
 pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.1f' % x)
-np.set_printoptions(precision=2, suppress=True)
+np.set_printoptions(precision=3, suppress=True)
 
 rootdir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 specsfile = os.path.join(rootdir, 'uscensus', 'specs.csv')
@@ -59,40 +59,38 @@ def distribution(*args, quantiles, function, **kwargs):
 Space = concept('space', ['unit', 'sqft'])
 Quality = concept('quality', ['yearbuilt'])
 Housing.customize(concepts=dict(space=Space, quality=Quality), parameters=('space', 'quality',), variables=variables)
-Household.customize(parameters=('spending', 'housing',), variables=variables)
+Household.customize(parameters=('consumption', 'housing',), variables=variables)
 
 geography = Geography({'state':1, 'county':1, 'tract':1})
 date = Date({'year':2010}) 
- 
-discountrate = Rate(2000, 0.018, basis='year')
+
+broker = Broker(commissions=0.06) 
+
 wealthrate = Rate(2000, 0.02, basis='year')    
 valuerate = Rate(2000, 0.05, basis='year')
 rentrate = Rate(2000, 0.035, basis='year')     
 incomerate = Rate(2000, 0.035, basis='year')
 inflationrate = Rate(2000, 0, basis='year')
 
-prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
-economy = dict(date=2000, purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
 household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English')
-financials = dict(savings=0.2, risktolerance=1, discountrate=discountrate)
+financials = dict(savings=0.2, risktolerance=1, discountrate=0.018)
 housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
 
-createHousing = lambda count, sqft, yearbuilt: Housing.create(geography=geography, date=date, housing=dict(count=count, sqft=sqft, yearbuilt=yearbuilt, **housing), neighborhood=neighborhood, **prices)
-createHousehold = lambda count, income: Household.create(date=date, household=dict(count=count, **household), financials=dict(income=income, **financials))
 
-
-def createHousings(size, density, sqfts, yearbuilts):
+def createHousings(size, density, sqfts, yearbuilts, prices):
     assert all([isinstance(item, np.ndarray) for item in (density, sqfts, yearbuilts,)])
     assert density.shape == sqfts.shape == yearbuilts.shape
     for ijx, iy, jy in zip(density.flatten(), sqfts.flatten(), yearbuilts.flatten()): 
-        yield createHousing(np.round(ijx * size, decimals=0).astype('int64'), iy, jy)
+        count = np.round(ijx * size, decimals=0).astype('int64')
+        yield Housing.create(geography=geography, date=date, housing=dict(count=count, sqft=iy, yearbuilt=jy, **housing), neighborhood=neighborhood, prices=prices)
                 
-def createHouseholds(size, density, incomes):
+def createHouseholds(size, density, incomes, economy):
     assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
     assert density.shape == incomes.shape
     for x, y in zip(density.flatten(), incomes.flatten()):
-        yield createHousehold(np.round(x * size, decimals=0).astype('int64'), y)
+        count = np.round(x * size, decimals=0).astype('int64')
+        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y, **financials), economy=economy)
         
 
 def main(*args, households, housings, income, sqft, yearbuilt, **kwargs):    
@@ -104,9 +102,12 @@ def main(*args, households, housings, income, sqft, yearbuilt, **kwargs):
     iyHG, jyHG = np.meshgrid(ysqft, yyrblt)
     xHG = np.multiply(ixHG, jxHG)
 
-    households = [item for item in createHouseholds(households['size'], xinc, yinc)]
-    housings = [item for item in createHousings(housings['size'], xHG, iyHG, jyHG)]
-    market = Rental_Property_Market(households=households, housing=housing)
+    prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
+    economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
+    households = [item for item in createHouseholds(households['size'], xinc, yinc, economy)]
+    housings = [item for item in createHousings(housings['size'], xHG, iyHG, jyHG, prices)]
+    market = Personal_Property_Market('renter', households=households, housings=housings)
+    market(*args, economy=economy, broker=broker, **kwargs)
     
     
 if __name__ == "__main__": 
