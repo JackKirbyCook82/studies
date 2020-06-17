@@ -54,19 +54,18 @@ geography = Geography({'state':1, 'county':1})
 date = Date({'year':2010}) 
 broker = Broker(commissions=0.06) 
 
-housing_income_ratio = 0.3
 income_profile = np.array([10000, 20000, 75000, 125000]) / 12
 saving_profile = np.array([0, 0.05, 0.10, 0.15]) 
-
-incomecurve = Curve(income_profile, saving_profile, extrapolate='last', method='linear',)
+savingrate = Curve(income_profile, saving_profile, extrapolate='last', method='linear',)
 wealthrate = Rate.flat(2000, 0.02, basis='year')    
 valuerate = Rate.flat(2000, 0.05, basis='year')
 rentrate = Rate.flat(2000, 0.035, basis='year')     
 incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
 
-household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English')
-financials = dict(risktolerance=1, discountrate=0.018)
+household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', 
+                 housing_income_ratio=0.3, poverty_housing=1930, poverty_consumption=10000/12)
+financials = dict(risktolerance=1, discountrate=0.018, savingrate=savingrate)
 housing = dict(unit='House', sqft=1500, valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
 
@@ -83,7 +82,7 @@ def createHouseholds(size, density, incomes, economy):
     assert density.shape == incomes.shape
     for x, y in zip(density.flatten(), incomes.flatten()):
         count = np.round(x * size, decimals=0).astype('int64')
-        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y/12, **financials), economy=economy)
+        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y, **financials), economy=economy)
         
 
 def main(*args, households, housings, income, yearbuilt, **kwargs):    
@@ -102,7 +101,7 @@ if __name__ == "__main__":
     inputParms = {}
     inputParms['households'] = dict(size=100, quantiles=[0.1, 0.25, 0.5, 0.75, 0.9])
     inputParms['housings'] = dict(size=100, quantiles=[0.25, 0.5, 0.75])
-    inputParms['income'] = dict(average=50000, gini=0.35)
+    inputParms['income'] = dict(average=50000/12, gini=0.35)
     inputParms['yearbuilt'] = dict(lower=1950, upper=2010)
     main(**inputParms)
 
