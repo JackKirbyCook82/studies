@@ -1,15 +1,12 @@
-import os.path
 import math
 import numpy as np
 import pandas as pd
 from scipy.optimize import fsolve
 from scipy.stats import norm, uniform
 
-from parsers import DictorListParser
-from specs import specs_fromfile
 from utilities.concepts import concept
-from variables import Variables, Date, Geography
-from realestate.economy import Economy, Rate, Loan, Broker
+from variables import Date, Geography
+from realestate.economy import Economy, Curve, Rate, Loan, Broker
 from realestate.households import Household
 from realestate.housing import Housing
 from realestate.markets import Personal_Property_Market
@@ -20,21 +17,13 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.1f' % x)
 np.set_printoptions(precision=3, suppress=True)
 
-rootdir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-specsfile = os.path.join(rootdir, 'uscensus', 'specs.csv')
-specsparsers = {'databasis': DictorListParser(pattern=';=')}
-specs = specs_fromfile(specsfile, specsparsers)
-custom_variables = Variables.create(**specs, name='USCensus')
-noncustom_variables = Variables.load('date', 'geography', 'geopath', name='USCensus')
-variables = custom_variables.update(noncustom_variables)
-
 mortgage = lambda x, n: Loan('mortgage', balance=x, duration=n, rate=0.05, basis='year')
 studentloan = lambda x, n: Loan('studentloan', balance=x, duration=n, rate=0.07, basis='year')
 
 lornez_function = lambda x, a: x * math.exp(-a * (1-x))
 lornez_integral = lambda a: (math.exp(-a) + a - 1) / (a**2)
 norm_pdf = lambda x, *args, average, stdev, **kwargs: norm.ppf(x, loc=average, scale=stdev)
-uniform_pdf = lambda x, *args, lower, upper, **kwargs: uniform.ppf(x, loc=lower, scale=lower+upper)
+uniform_pdf = lambda x, *args, lower, upper, **kwargs: uniform.ppf(x, loc=lower, scale=upper-lower)
 
 def lornez(*args, average, gini, quantiles, function, integral, **kwargs):  
     assert hasattr(function, '__call__') and hasattr(integral, '__call__')
@@ -58,65 +47,63 @@ def distribution(*args, quantiles, function, **kwargs):
 
 Space = concept('space', ['unit', 'sqft'])
 Quality = concept('quality', ['yearbuilt'])
-Housing.customize(concepts=dict(space=Space, quality=Quality), parameters=('space', 'quality',), variables=variables)
-Household.customize(parameters=('consumption', 'housing',), variables=variables)
+Housing.customize(concepts=dict(space=Space, quality=Quality), parameters=('space', 'quality',))
+Household.customize(parameters=('consumption', 'housing',))
 
-geography = Geography({'state':1, 'county':1, 'tract':1})
+geography = Geography({'state':1, 'county':1})
 date = Date({'year':2010}) 
-
 broker = Broker(commissions=0.06) 
 
-wealthrate = Rate(2000, 0.02, basis='year')    
-valuerate = Rate(2000, 0.05, basis='year')
-rentrate = Rate(2000, 0.035, basis='year')     
-incomerate = Rate(2000, 0.035, basis='year')
-inflationrate = Rate(2000, 0, basis='year')
+housing_income_ratio = 0.3
+income_profile = np.array([10000, 20000, 75000, 125000]) / 12
+saving_profile = np.array([0, 0.05, 0.10, 0.15]) 
+
+incomecurve = Curve(income_profile, saving_profile, extrapolate='last', method='linear',)
+wealthrate = Rate.flat(2000, 0.02, basis='year')    
+valuerate = Rate.flat(2000, 0.05, basis='year')
+rentrate = Rate.flat(2000, 0.035, basis='year')     
+incomerate = Rate.flat(2000, 0.035, basis='year')
+inflationrate = Rate.flat(2000, 0, basis='year')
 
 household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English')
-financials = dict(savings=0.2, risktolerance=1, discountrate=0.018)
-housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
+financials = dict(risktolerance=1, discountrate=0.018)
+housing = dict(unit='House', sqft=1500, valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
 
 
-def createHousings(size, density, sqfts, yearbuilts, prices):
-    assert all([isinstance(item, np.ndarray) for item in (density, sqfts, yearbuilts,)])
-    assert density.shape == sqfts.shape == yearbuilts.shape
-    for ijx, iy, jy in zip(density.flatten(), sqfts.flatten(), yearbuilts.flatten()): 
-        count = np.round(ijx * size, decimals=0).astype('int64')
-        yield Housing.create(geography=geography, date=date, housing=dict(count=count, sqft=iy, yearbuilt=jy, **housing), neighborhood=neighborhood, prices=prices)
+def createHousings(size, density, yearbuilts, prices):
+    assert all([isinstance(item, np.ndarray) for item in (density, yearbuilts,)])
+    assert density.shape == yearbuilts.shape
+    for x, y in zip(density.flatten(), yearbuilts.flatten()): 
+        count = np.round(x * size, decimals=0).astype('int64')
+        yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=y, **housing), neighborhood=neighborhood, prices=prices)
                 
 def createHouseholds(size, density, incomes, economy):
     assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
     assert density.shape == incomes.shape
     for x, y in zip(density.flatten(), incomes.flatten()):
         count = np.round(x * size, decimals=0).astype('int64')
-        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y, **financials), economy=economy)
+        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y/12, **financials), economy=economy)
         
 
-def main(*args, households, housings, income, sqft, yearbuilt, **kwargs):    
+def main(*args, households, housings, income, yearbuilt, **kwargs):    
     xinc, yinc = lornez(**income, quantiles=households['quantiles'], function=lornez_function, integral=lornez_integral)
-    xsqft, ysqft = distribution(**sqft, quantiles=housings['quantiles'], function=norm_pdf)
-    xyrblt, yyrblt = distribution(**yearbuilt, quantiles=housings['quantiles'], function=norm_pdf)    
-  
-    ixHG, jxHG = np.meshgrid(xsqft, xyrblt)
-    iyHG, jyHG = np.meshgrid(ysqft, yyrblt)
-    xHG = np.multiply(ixHG, jxHG)
-
+    xyrblt, yyrblt = distribution(**yearbuilt, quantiles=housings['quantiles'], function=uniform_pdf)     
     prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
     economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
     households = [item for item in createHouseholds(households['size'], xinc, yinc, economy)]
-    housings = [item for item in createHousings(housings['size'], xHG, iyHG, jyHG, prices)]
+    housings = [item for item in createHousings(housings['size'], xyrblt, yyrblt, prices)]
     market = Personal_Property_Market('renter', households=households, housings=housings)
-    market(*args, economy=economy, broker=broker, **kwargs)
-    
+    market.equilibrium(*args, economy=economy, broker=broker, **kwargs)
+    print(market.table('housings'))        
+ 
     
 if __name__ == "__main__": 
     inputParms = {}
     inputParms['households'] = dict(size=100, quantiles=[0.1, 0.25, 0.5, 0.75, 0.9])
     inputParms['housings'] = dict(size=100, quantiles=[0.25, 0.5, 0.75])
     inputParms['income'] = dict(average=50000, gini=0.35)
-    inputParms['sqft'] = dict(average=1750, stdev=750)
-    inputParms['yearbuilt'] = dict(average=1980, stdev=10)
+    inputParms['yearbuilt'] = dict(lower=1950, upper=2010)
     main(**inputParms)
 
 
