@@ -12,7 +12,7 @@ from realestate.housing import Housing
 from realestate.markets import Personal_Property_Market
 
 pd.set_option('display.max_columns', 10)
-pd.set_option("display.precision", 0)
+pd.set_option("display.precision", 3)
 pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.1f' % x)
 np.set_printoptions(precision=3, suppress=True)
@@ -88,12 +88,13 @@ def createHouseholds(size, density, incomes, economy):
 def main(*args, households, housings, income, yearbuilt, **kwargs):    
     xinc, yinc = lornez(**income, quantiles=households['quantiles'], function=lornez_function, integral=lornez_integral)
     xyrblt, yyrblt = distribution(**yearbuilt, quantiles=housings['quantiles'], function=uniform_pdf)     
-    prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
+    prices = dict(sqftprice=100, sqftrent=0.5, sqftcost=0.5)
     economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
     households = [item for item in createHouseholds(households['size'], xinc, yinc, economy)]
     housings = [item for item in createHousings(housings['size'], xyrblt, yyrblt, prices)]
     market = Personal_Property_Market('renter', households=households, housings=housings)
-    market.equilibrium(*args, economy=economy, broker=broker, **kwargs)
+    market(*args, economy=economy, broker=broker, **kwargs)
+    print(market.table('households'))
     print(market.table('housings'))        
  
     
