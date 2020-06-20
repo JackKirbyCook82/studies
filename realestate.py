@@ -101,14 +101,15 @@ def main(*args, filename, betashape, avgincomes, giniindexes, households, housin
             ihouseholds = [ihousehold for ihousehold in createHouseholds(households['size'], xinc, yinc, economy)]
             for a, b in beta_generator(betashape):
                  print('Calculating(avgincome={average:.0f}, giniindex={gini}, betashape=({a}, {b}))'.format(average=avgincome, gini=giniindex, a=a, b=b))
-                 xyrblt, yyrblt = distribution(**yearbuilts, a=a, b=b, quantiles=housings['quantiles'], function=uniform_pdf)  
+                 xyrblt, yyrblt = distribution(**yearbuilts, a=a, b=b, quantiles=housings['quantiles'], function=beta_pdf)  
                  ihousings = [ihousing for ihousing in createHousings(housings['size'], xyrblt, yyrblt, prices)]
                  market = Personal_Property_Market('renter', households=ihouseholds, housings=ihousings)
                  try: 
                      market(*args, economy=economy, broker=broker, **kwargs)
                      incomes = {'Income[%{:.0f}-%{:.0f}]'.format(i*100, j*100):ihousehold.financials.income for i, j, ihousehold in zip([0, *households['quantiles']], [*households['quantiles'], 1], ihouseholds)}
                      rents = {'Rent[%{:.0f}-%{:.0f}]'.format(i*100, j*100):ihousing.rentercost for i, j, ihousing in zip([0, *housings['quantiles']], [*housings['quantiles'], 1], ihousings)}
-                     records.append({'AvgIncome':avgincome, 'GiniIndex':giniindex, 'BetaShapeA':a, 'BetaShapeB':b, **incomes, **rents})
+                     avgrent = np.average(np.array([ihousing.rentercost for ihousing in ihousings]))
+                     records.append({'GiniIndex':giniindex, 'AvgIncome':avgincome, 'AvgRent':avgrent, 'BetaShapeA':a, 'BetaShapeB':b, **incomes, **rents})
                      print('Success')
                  except Exception: print('Failure')
                  Housing.clear()
@@ -120,7 +121,7 @@ def main(*args, filename, betashape, avgincomes, giniindexes, households, housin
     
 if __name__ == "__main__": 
     inputParms = {}
-    inputParms['filename'] = 'RentMarketEquilibrium'
+    inputParms['filename'] = 'RentMarketEquilibriumBeta'
     inputParms['households'] = dict(size=10000, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     inputParms['housings'] = dict(size=10000, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     inputParms['yearbuilts'] = dict(lower=1900, upper=2000)
