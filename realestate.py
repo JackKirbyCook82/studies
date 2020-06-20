@@ -26,10 +26,10 @@ lornez_function = lambda x, a: x * math.exp(-a * (1-x))
 lornez_integral = lambda a: (math.exp(-a) + a - 1) / (a**2)
 norm_pdf = lambda x, *args, average, stdev, **kwargs: norm.ppf(x, loc=average, scale=stdev)
 uniform_pdf = lambda x, *args, lower, upper, **kwargs: uniform.ppf(x, loc=lower, scale=upper-lower)
-beta_pdf = lambda x, *args, a, b, lower, upper, **kwargs: beta.pdf(x, a, b, loc=lower, scale=upper-lower)
+beta_pdf = lambda x, *args, a, b, lower, upper, **kwargs: beta.ppf(x, a, b, loc=lower, scale=upper-lower)
 beta_generator = lambda x: chain(((1, 1) for i in range(1)), ((a, b) for a, b in product(range(2, x+1), range(2, x+1))))
 excelfile = lambda filename: os.path.join(os.path.dirname(os.path.realpath(__file__)), '.'.join([filename, 'xlsx']))
-spreadsheet = lambda dataframe, filename: dataframe.toexcel(excelfile(filename))
+spreadsheet = lambda dataframe, filename: dataframe.to_excel(excelfile(filename), index=False, header=True)
 
 def lornez(*args, average, gini, quantiles, function, integral, **kwargs):  
     assert hasattr(function, '__call__') and hasattr(integral, '__call__')
@@ -70,7 +70,7 @@ incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
 
 household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', 
-                 housing_income_ratio=0.35, poverty_housing=1900, poverty_consumption=350)
+                 housing_income_ratio=0.35, poverty_housing=1900, poverty_consumption=(12000/12)*0.65)
 financials = dict(risktolerance=1, discountrate=0.018, savingrate=savingrate)
 housing = dict(unit='House', sqft=1500, valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
@@ -91,7 +91,7 @@ def createHouseholds(size, density, incomes, economy):
         yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y, **financials), economy=economy)
         
 
-def main(*args, betashape, avgincomes, giniindexes, households, housings, yearbuilts, **kwargs):    
+def main(*args, filename, betashape, avgincomes, giniindexes, households, housings, yearbuilts, **kwargs):    
     records = []
     economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
     prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
@@ -100,27 +100,33 @@ def main(*args, betashape, avgincomes, giniindexes, households, housings, yearbu
             xinc, yinc = lornez(average=avgincome, gini=giniindex, quantiles=households['quantiles'], function=lornez_function, integral=lornez_integral)
             ihouseholds = [ihousehold for ihousehold in createHouseholds(households['size'], xinc, yinc, economy)]
             for a, b in beta_generator(betashape):
-                 print('Calculating(avgincome={average}, gini={gini}, a={a}, b={b})'.format(average=avgincome, gini=giniindex, a=a, b=b))
-                 xyrblt, yyrblt = distribution(**yearbuilts, a=a, b=b, quantiles=housings['quantiles'], function=beta_pdf)  
+                 print('Calculating(avgincome={average:.0f}, giniindex={gini}, betashape=({a}, {b}))'.format(average=avgincome, gini=giniindex, a=a, b=b))
+                 xyrblt, yyrblt = distribution(**yearbuilts, a=a, b=b, quantiles=housings['quantiles'], function=uniform_pdf)  
                  ihousings = [ihousing for ihousing in createHousings(housings['size'], xyrblt, yyrblt, prices)]
                  market = Personal_Property_Market('renter', households=ihouseholds, housings=ihousings)
-                 market(*args, economy=economy, broker=broker, **kwargs)
-                 records.append({'avgincome':avgincome, 'gini':giniindex, 'betashape':(a, b), 'rent':np.array([ihousing.rentercost for ihousing in ihousings])})
+                 try: 
+                     market(*args, economy=economy, broker=broker, **kwargs)
+                     incomes = {'Income[%{:.0f}-%{:.0f}]'.format(i*100, j*100):ihousehold.financials.income for i, j, ihousehold in zip([0, *households['quantiles']], [*households['quantiles'], 1], ihouseholds)}
+                     rents = {'Rent[%{:.0f}-%{:.0f}]'.format(i*100, j*100):ihousing.rentercost for i, j, ihousing in zip([0, *housings['quantiles']], [*housings['quantiles'], 1], ihousings)}
+                     records.append({'AvgIncome':avgincome, 'GiniIndex':giniindex, 'BetaShapeA':a, 'BetaShapeB':b, **incomes, **rents})
+                     print('Success')
+                 except Exception: print('Failure')
                  Housing.clear()
             Household.clear()
     records = pd.DataFrame(records)
-    print(records)
+    records.index.name = 'Calculation'
+    spreadsheet(records, filename)
 
     
 if __name__ == "__main__": 
     inputParms = {}
-    inputParms['filename'] = 'RentMarketTables'
-    inputParms['households'] = dict(size=100, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    inputParms['housings'] = dict(size=100, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    inputParms['filename'] = 'RentMarketEquilibrium'
+    inputParms['households'] = dict(size=10000, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    inputParms['housings'] = dict(size=10000, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
     inputParms['yearbuilts'] = dict(lower=1900, upper=2000)
-    inputParms['avgincomes'] = [40000]
-    inputParms['giniindexes'] = [0.35]
-    inputParms['betashape'] = 2
+    inputParms['avgincomes'] = [i/12 for i in [40000, 50000, 60000, 80000]]
+    inputParms['giniindexes'] = [0.25, 0.3, 0.35, 0.4, 0.45]
+    inputParms['betashape'] = 4
     main(**inputParms)
 
 
