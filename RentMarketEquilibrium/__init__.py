@@ -40,8 +40,8 @@ load = lambda filename: pd.read_excel(os.path.join(os.path.dirname(os.path.realp
 
 
 def lornez(*args, average, gini, quantiles, function, integral, **kwargs):  
-    assert hasattr(function, '__call__') and hasattr(integral, '__call__')
     assert isinstance(quantiles, (list, np.ndarray))
+    assert hasattr(function, '__call__') and hasattr(integral, '__call__')    
     assert 0 <= gini <= 1
     zero_function = lambda a: 1 - 2 * integral(a) - gini
     coefficient = fsolve(zero_function, 1)
@@ -50,14 +50,23 @@ def lornez(*args, average, gini, quantiles, function, integral, **kwargs):
     shares = np.diff(np.vectorize(lambda x: function(x, coefficient))(quantiles)) 
     return sizes.astype('float64'), (shares * average / sizes).astype('int64')
 
-#def distribution(*args, quantiles, function, **kwargs):
-#    assert isinstance(quantiles, (list, np.ndarray))
-#    assert hasattr(function, '__call__')
-#    quantiles = np.array([0, *quantiles, 1])
-#    sizes = np.diff(quantiles)  
-#    avgquantiles = (quantiles[1:] + quantiles[:-1])/2
-#    avgvalues = function(avgquantiles, **kwargs)
-#    return sizes.astype('float64'), avgvalues.astype('int64')
+def distribution(*args, quantiles, function, **kwargs): 
+    assert isinstance(quantiles, (list, np.ndarray))
+    assert hasattr(function, '__call__')
+    quantiles = np.array([0, *quantiles, 1])
+    sizes = np.diff(quantiles)  
+    avgquantiles = (quantiles[1:] + quantiles[:-1])/2
+    avgvalues = function(avgquantiles, **kwargs)
+    return sizes.astype('float64'), avgvalues.astype('int64')
+
+def meshdistribution(*args, distributions, **kwargs):
+    assert isinstance(distributions, list)
+    distributions = [distribution(*args, **values, **kwargs) for values in distributions]
+    xvalues = [x.flatten() for x in np.meshgrid(*[items[0] for items in distributions])]
+    yvalues = [y.flatten() for y in np.meshgrid(*[items[1] for items in distributions])]    
+    sizes = np.array([np.prod(list(x)) for x in zip(*xvalues)])
+    values = np.array([np.array(list(y)) for y in zip(*yvalues)]).transpose()
+    return sizes.astype('float64'), tuple([*values.astype('int64')])
 
 
 Space = concept('space', ['unit', 'sqft'])
@@ -66,7 +75,6 @@ Location = concept('location', ['rank'])
 Housing.customize(concepts=dict(space=Space, quality=Quality, location=Location), parameters=('space', 'quality', 'location',))
 Household.customize(lifetimes=LIFETIMES)
 
-geography = Geography({'state':1, 'county':1})
 date = Date({'year':2010}) 
 broker = Broker(commissions=0.06) 
 
@@ -79,117 +87,58 @@ rentrate = Rate.flat(2000, 0.035, basis='year')
 incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
 
-household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', 
-                 housing_income_ratio=0.35, poverty_housing=1900, poverty_consumption=(12000/12)*0.65)
+household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', housing_income_ratio=0.35, poverty_housing=1900, poverty_consumption=(12000/12)*0.65)
 financials = dict(risktolerance=1, discountrate=0.018, savingrate=savingrate)
-housing = dict(unit='House', sqft=1500, valuerate=valuerate, rentrate=rentrate)    
+housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
 
 
-#def createHousings(size, density, sqfts, yearbuilts, ranks, prices):
-#    assert all([isinstance(item, np.ndarray) for item in (density, yearbuilts,)])
-#    assert density.shape == yearbuilts.shape
-#    for x, y in zip(density.flatten(), yearbuilts.flatten()): 
-#        count = np.round(x * size, decimals=0).astype('int64')
-#        yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=y, **housing), neighborhood=neighborhood, prices=prices)
+def createHouseholds(size, density, incomes, *args, economy, **kwargs):
+    assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
+    assert density.shape == incomes.shape
+    for x, inc in zip(density.flatten(), incomes.flatten()):
+        count = np.round(x * size, decimals=0).astype('int64')
+        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=inc, **financials), economy=economy)
+    
+def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwargs):
+    assert all([isinstance(item, np.ndarray) for item in (density, yearbuilts, sqfts, ranks,)])
+    assert density.shape == yearbuilts.shape == sqfts.shape == ranks.shape
+    for x, yrblt, sqft, rank in zip(density.flatten(), yearbuilts.flatten(), sqfts.flatten(), ranks.flatten()): 
+        geography = Geography({'state':1, 'county':rank})
+        count = np.round(x * size, decimals=0).astype('int64')
+        yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
                 
-#def createHouseholds(size, density, incomes, economy):
-#    assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
-#    assert density.shape == incomes.shape
-#    for x, y in zip(density.flatten(), incomes.flatten()):
-#        count = np.round(x * size, decimals=0).astype('int64')
-#        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=y, **financials), economy=economy)
+
+
+def calculate(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
+    economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
+    prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)    
+    hhsizes, hhvalues = lornez(*args, **income, **kwargs)
+    hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
+    ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
+    ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
+    market = Personal_Property_Market('renter', households=ihouseholds, housings=ihousings)
+    market(*args, economy=economy, broker=broker, **kwargs)
     
-    
-#def calculate(*args, filename, betashape, avgincomes, giniindexes, households, housings, yearbuilts, **kwargs):    
-#    records = []
-#    economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
-#    prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)
-#    for avgincome, giniindex in product(avgincomes, giniindexes):
-#        xinc, yinc = lornez(average=avgincome, gini=giniindex, quantiles=households['quantiles'], function=lornez_function, integral=lornez_integral)
-#        ihouseholds = [ihousehold for ihousehold in createHouseholds(households['size'], xinc, yinc, economy)]
-#        for a, b in beta_generator(betashape):
-#            print('Calculating(avgincome={average:.0f}, giniindex={gini}, betashape=({a}, {b}))'.format(average=avgincome, gini=giniindex, a=a, b=b))
-#            xyrblt, yyrblt = distribution(**yearbuilts, a=a, b=b, quantiles=housings['quantiles'], function=beta_pdf)  
-#            ihousings = [ihousing for ihousing in createHousings(housings['size'], xyrblt, yyrblt, prices)]
-#            market = Personal_Property_Market('renter', households=ihouseholds, housings=ihousings)
-#            try: 
-#                market(*args, economy=economy, broker=broker, **kwargs)
-#                incomes = {INCQTILE.format(i*100, j*100):ihousehold.financials.income for i, j, ihousehold in zip([0, *households['quantiles']], [*households['quantiles'], 1], ihouseholds)}
-#                rents = {RENTQTILE.format(i*100, j*100):ihousing.rentercost for i, j, ihousing in zip([0, *housings['quantiles']], [*housings['quantiles'], 1], ihousings)}
-#                incomearray = np.array([ihousehold.financials.income for ihousehold in ihouseholds])
-#                rentarray = np.array([ihousing.rentercost for ihousing in ihousings])
-#                stats = {'AvgIncome':wtaverage_vector(incomearray, xinc), 'StdIncome':wtstdev_vector(incomearray, xinc), 'AvgRent':wtaverage_vector(rentarray, xyrblt), 'StdRent':wtstdev_vector(rentarray, xyrblt)}
-#                records.append({'GiniIndex':giniindex, 'BetaShapeA':a, 'BetaShapeB':b, **stats, **incomes, **rents})
-#                print('Success')
-#            except Exception: print('Failure')
-#            Housing.clear()
-#        Household.clear()
-#    records = pd.DataFrame(records)
-#    records.index.name = 'Calculation'
-#    spreadsheet(records, filename)
 
-
-#def table(*args, filename, **kwargs):
-#    try: dataframe = load(filename)[['GiniIndex', 'BetaShapeA', 'BetaShapeB', 'AvgIncome', 'AvgRent']].dropna(axis=1)
-#    except KeyError: dataframe = load(filename)[['GiniIndex', 'AvgIncome', 'AvgRent']].dropna(axis=1)    
-#    print(dataframe)
-
-#@keydispatcher
-#def plot(method, *args, **kwargs): raise KeyError(method)
-
-#@plot.register('averagerent')
-#def plot_avgrent(*args, filename, betashape, rentlimit=None, **kwargs):
-#    dataframe = load(filename).dropna(axis=1)
-#    fig = vis.figures.createplot((10,10), title=None)   
-#    ax = vis.figures.createax(fig, x=1, y=1, pos=1, projection='3D', limits={'z':(0, rentlimit)})
-#    if filename == UNIFORMFILENAME:
-#        vis.plots.surface_plot(ax, dataframe, *args, x='AvgIncome', y='GiniIndex', z='AvgRent', density=75, **kwargs)
-#        vis.figures.setnames(title='Average Rent Uniform')
-#    elif filename == BETAFILENAME and betashape is not None:
-#        for a, b in beta_generator(betashape): 
-#            vis.plots.surface_plot(ax, select(dataframe, a, b), *args, x='AvgIncome', y='GiniIndex', z='AvgRent', density=75, **kwargs)
-#            vis.figures.setnames(title='Average Rent Beta')
-#    else: raise ValueError(filename, betashape)
-#    vis.figures.setnames(ax, names=dict(x='AvgIncome', y='GiniIndex', z='AvgRent'))
-#    vis.figures.showplot(fig)    
-
-#@plot.register('quantilerent')
-#def plot_qtilerent(*args, filename, housings, a=None, b=None, rentlimit=None, **kwargs):
-#    if filename == UNIFORMFILENAME: 
-#        dataframe = load(filename).dropna(axis=1)
-#        title = 'Quantile Rent Uniform'
-#    elif all([filename == BETAFILENAME, a is not None, b is not None]):
-#        dataframe = select(load(filename).dropna(axis=1), a=a, b=b)
-#        title = 'Quantile Rent Beta w/ A={} & B={}'.format(a, b)
-#    else: raise ValueError(filename, a, b)
-#    fig = vis.figures.createplot((10,10), title=title)   
-#    ax = vis.figures.createax(fig, x=1, y=1, pos=1, projection='3D', limits={'z':(0, rentlimit)})    
-#    for i, j in zip([0, *housings['quantiles']], [*housings['quantiles'], 1]):
-#        column = RENTQTILE.format(i*100, j*100)
-#        vis.plots.surface_plot(ax, dataframe, *args, x='AvgIncome', y='GiniIndex', z=column, density=75, **kwargs)
-#    vis.figures.setnames(ax, names=dict(x='AvgIncome', y='GiniIndex', z='QuantileRent'))
-#    vis.figures.showplot(fig)  
-
-    
-def main(*args, recalculate, filename, **kwargs):
-    pass
+def main(*args, **kwargs):
+    calculate(*args, **kwargs)
+    print(Household.table())
+    print(Housing.table())
 
     
 if __name__ == "__main__": 
     inputParms = {}
     inputParms['households'] = 10000
     inputParms['housings'] = 10000
-    inputParms['avgincome'] = 50000
-    inputParms['giniindex'] = 0.35
-    inputParms['yearbuilt'] = dict(lower=1930, upper=2015)
-    inputParms['sqft'] = dict(lower=500, upper=4000)
-    inputParms['rank'] = dict(lower=1, upper=100)
+    inputParms['income'] = dict(average=50000/12, gini=0.35, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], function=lornez_function, integral=lornez_integral)
+    inputParms['yearbuilt'] = dict(lower=1930, upper=2015, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
+    inputParms['sqft'] = dict(lower=500, upper=3500, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
+    inputParms['rank'] = dict(lower=1, upper=100, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
     main(**inputParms)
 
 
-    
-    
+
     
     
     
