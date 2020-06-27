@@ -87,7 +87,9 @@ rentrate = Rate.flat(2000, 0.035, basis='year')
 incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
 
-household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', housing_income_ratio=0.35, poverty_housing=1900, poverty_consumption=(12000/12)*0.65)
+preferences = dict(housing_income_ratio=0.35)
+poverty = dict(poverty_sqft=100, poverty_yearbuilt=1930, poverty_consumption=(12000/12)*0.65)
+household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', **preferences, **poverty)
 financials = dict(risktolerance=1, discountrate=0.018, savingrate=savingrate)
 housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
 neighborhood = dict()   
@@ -97,7 +99,7 @@ def createHouseholds(size, density, incomes, *args, economy, **kwargs):
     assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
     assert density.shape == incomes.shape
     for x, inc in zip(density.flatten(), incomes.flatten()):
-        count = np.round(x * size, decimals=0).astype('int64')
+        count = np.ceil(x * size).astype('int64')
         yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=inc, **financials), economy=economy)
     
 def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwargs):
@@ -105,36 +107,37 @@ def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwa
     assert density.shape == yearbuilts.shape == sqfts.shape == ranks.shape
     for x, yrblt, sqft, rank in zip(density.flatten(), yearbuilts.flatten(), sqfts.flatten(), ranks.flatten()): 
         geography = Geography({'state':1, 'county':rank})
-        count = np.round(x * size, decimals=0).astype('int64')
+        count = np.ceil(x * size).astype('int64')
         yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
                 
 
 
 def calculate(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
     economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)
-    prices = dict(sqftprice=100, sqftrent=1, sqftcost=0.5)    
+    prices = dict(price=100000, rent=1000, sqftcost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
     market = Personal_Property_Market('renter', households=ihouseholds, housings=ihousings)
     market(*args, economy=economy, broker=broker, **kwargs)
-    
+    print(market.table(*args, economy=economy, broker=broker, **kwargs))
+
 
 def main(*args, **kwargs):
     calculate(*args, **kwargs)
     print(Household.table())
-    print(Housing.table())
-
+    print(Housing.table(tenure='renter'))
+    
     
 if __name__ == "__main__": 
     inputParms = {}
-    inputParms['households'] = 10000
-    inputParms['housings'] = 10000
-    inputParms['income'] = dict(average=50000/12, gini=0.35, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], function=lornez_function, integral=lornez_integral)
-    inputParms['yearbuilt'] = dict(lower=1930, upper=2015, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
-    inputParms['sqft'] = dict(lower=500, upper=3500, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
-    inputParms['rank'] = dict(lower=1, upper=100, quantiles=[0.25, 0.5, 0.75], function=uniform_pdf)
+    inputParms['households'] = 1000
+    inputParms['housings'] = 1000
+    inputParms['income'] = dict(average=50000/12, gini=0.35, quantiles= [0.2, 0.4, 0.6, 0.8], function=lornez_function, integral=lornez_integral)
+    inputParms['yearbuilt'] = dict(lower=1970, upper=2010, quantiles=[0.5], function=uniform_pdf)
+    inputParms['sqft'] = dict(lower=1250, upper=2750, quantiles=[0.5], function=uniform_pdf)
+    inputParms['rank'] = dict(lower=1, upper=100, quantiles=[0.5], function=uniform_pdf)
     main(**inputParms)
 
 
