@@ -115,38 +115,35 @@ def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **k
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
-    return Personal_Property_Market('renter', households=ihouseholds, housings=ihousings, rtol=0.005, atol=0.01)
+    return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, **kwargs)
 
-def historyPlot(dataframe, *args, colors, yearbuilt, sqft, rank, **kwargs):
+def historyPlot(history, *args, plots, colors, yearbuilt, sqft, rank, **kwargs):
     iyrblt, isqft, irank = np.meshgrid(*[np.arange(len(item['quantiles']) + 1) for item in (yearbuilt, sqft, rank,)])
     iyrblt, isqft, irank = [item.flatten() for item in (iyrblt, isqft, irank,)]
     colors = [colors['codes'][index] for index in dict(yearbuilt=iyrblt, sqft=isqft, rank=irank)[colors['key']]]
     fig = vis.figures.createplot((12, 12), title=None)
-    ax = vis.figures.createax(fig, x=1, y=1, pos=1)
-    vis.plots.line_plot(ax, dataframe, colors=colors)
-    vis.figures.setnames(ax, title=None, names=dict(x='Step', y='Rent'))
+    axes = [vis.figures.createax(fig, x=math.ceil(len(plots)/2), y=2, pos=i) for i in range(1, len(plots)+1)]
+    for plot, ax in zip(plots, axes): vis.plots.line_plot(ax, history.table(plot, period=25), colors=colors)
     vis.figures.showplot(fig)
-    
-    
+
+
 def main(*args, **kwargs):
-    market = createMarket(*args, **kwargs)
-    history = Market_History.fromMarket(market, *args, **kwargs)
+    history = Market_History()
+    market = createMarket(*args, history=history, maxsteps=150, **kwargs)
     try: market(*args, economy=economy, broker=broker, **kwargs)    
     except ConvergenceError: pass          
-    historyPlot(history.table(), *args, **kwargs)
-    print(market.table(*args, **kwargs))
-    print(Household.table())
-    print(Housing.table())
+    historyPlot(history, *args, **kwargs)
 
 if __name__ == "__main__": 
     inputParms = {}
-    inputParms['households'] = 1000
+    inputParms['households'] = 1100
     inputParms['housings'] = 1000
     inputParms['income'] = dict(average=50000/12, gini=0.3, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], function=lornez_function, integral=lornez_integral)
     inputParms['yearbuilt'] = dict(lower=1950, upper=2010, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['sqft'] = dict(lower=1200, upper=3800, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['rank'] = dict(lower=0, upper=100, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['colors'] = dict(key='sqft', codes=['r', 'g', 'b'])
+    inputParms['plots'] = ['demand', 'elasticitys', 'price']
     main(**inputParms)
 
 
