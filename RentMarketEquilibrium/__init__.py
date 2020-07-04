@@ -117,22 +117,22 @@ def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **k
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
     return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, **kwargs)
 
-def historyPlot(history, *args, plots, colors, yearbuilt, sqft, rank, **kwargs):
+def plotHistory(history, *args, yearbuilt, sqft, rank, colors, period, **kwargs):
     iyrblt, isqft, irank = np.meshgrid(*[np.arange(len(item['quantiles']) + 1) for item in (yearbuilt, sqft, rank,)])
     iyrblt, isqft, irank = [item.flatten() for item in (iyrblt, isqft, irank,)]
     colors = [colors['codes'][index] for index in dict(yearbuilt=iyrblt, sqft=isqft, rank=irank)[colors['key']]]
     fig = vis.figures.createplot((12, 12), title=None)
-    axes = [vis.figures.createax(fig, x=math.ceil(len(plots)/2), y=2, pos=i) for i in range(1, len(plots)+1)]
-    for plot, ax in zip(plots, axes): vis.plots.line_plot(ax, history.table(plot, period=25), colors=colors)
+    axes = {'demand':vis.figures.createax(fig, x=2, y=1, pos=1), 'price':vis.figures.createax(fig, x=2, y=1, pos=2)}
+    for key, ax in axes.items(): vis.plots.line_plot(ax, history.table(key, period=period), colors=colors)
     vis.figures.showplot(fig)
 
 
 def main(*args, **kwargs):
     history = Market_History()
-    market = createMarket(*args, history=history, maxsteps=150, **kwargs)
+    market = createMarket(*args, history=history, stepsize=0.005, maxsteps=2000, **kwargs)
     try: market(*args, economy=economy, broker=broker, **kwargs)    
     except ConvergenceError: pass          
-    historyPlot(history, *args, **kwargs)
+    plotHistory(history, *args, period=1, **kwargs)
 
 if __name__ == "__main__": 
     inputParms = {}
@@ -143,7 +143,6 @@ if __name__ == "__main__":
     inputParms['sqft'] = dict(lower=1200, upper=3800, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['rank'] = dict(lower=0, upper=100, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['colors'] = dict(key='sqft', codes=['r', 'g', 'b'])
-    inputParms['plots'] = ['demand', 'elasticitys', 'price']
     main(**inputParms)
 
 
