@@ -129,9 +129,8 @@ def plotHistory(history, *args, yearbuilt, sqft, rank, colors, period, **kwargs)
 
 def main(*args, **kwargs):
     history = Market_History()
-    market = createMarket(*args, history=history, stepsize=0.005, maxsteps=2000, **kwargs)
-    try: market(*args, economy=economy, broker=broker, **kwargs)    
-    except ConvergenceError: pass          
+    market = createMarket(*args, history=history, stepsize=0.1, maxsteps=500, **kwargs)
+    market(*args, economy=economy, broker=broker, **kwargs)          
     plotHistory(history, *args, period=1, **kwargs)
 
 if __name__ == "__main__": 
