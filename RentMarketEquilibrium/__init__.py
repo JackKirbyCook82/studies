@@ -18,7 +18,7 @@ pd.set_option('display.max_columns', 10)
 pd.set_option("display.precision", 0)
 pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.1f' % x)
-np.set_printoptions(precision=3, suppress=True)
+np.set_printoptions(precision=2, suppress=True)
 
 INCQTILE = 'Income[%{:.0f}-%{:.0f}]'
 RENTQTILE = 'Rent[%{:.0f}-%{:.0f}]'
@@ -110,7 +110,7 @@ def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwa
         yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
                 
 def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
-    prices = dict(price=100000, rent=500, sqftcost=0.5)    
+    prices = dict(price=100000, rent=750, sqftcost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
@@ -122,15 +122,15 @@ def plotHistory(history, *args, yearbuilt, sqft, rank, colors, period, **kwargs)
     iyrblt, isqft, irank = [item.flatten() for item in (iyrblt, isqft, irank,)]
     colors = [colors['codes'][index] for index in dict(yearbuilt=iyrblt, sqft=isqft, rank=irank)[colors['key']]]
     fig = vis.figures.createplot((12, 12), title=None)
-    axes = {'demand':vis.figures.createax(fig, x=2, y=1, pos=1), 'price':vis.figures.createax(fig, x=2, y=1, pos=2)}
-    for key, ax in axes.items(): vis.plots.line_plot(ax, history.table(key, period=period), colors=colors)
+    ax = vis.figures.createax(fig, x=1, y=1, pos=1)
+    vis.plots.line_plot(ax, history.table('price', period=period), colors=colors)
     vis.figures.showplot(fig)
 
 
 def main(*args, **kwargs):
     history = Market_History()
     market = createMarket(*args, history=history, stepsize=0.1, maxsteps=500, **kwargs)
-    market(*args, economy=economy, broker=broker, **kwargs)          
+    market(*args, economy=economy, broker=broker, date=date, **kwargs)          
     plotHistory(history, *args, period=1, **kwargs)
 
 if __name__ == "__main__": 
