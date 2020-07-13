@@ -110,7 +110,7 @@ def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwa
         yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
                 
 def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
-    prices = dict(price=100000, rent=750, sqftcost=0.5)    
+    prices = dict(price=100000, rent=500, sqftcost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
