@@ -18,7 +18,7 @@ pd.set_option('display.max_columns', 10)
 pd.set_option("display.precision", 0)
 pd.set_option('display.width', 1000)
 pd.set_option('display.float_format', lambda x: '%.1f' % x)
-np.set_printoptions(precision=2, suppress=True)
+np.set_printoptions(precision=5, linewidth=150, suppress=True)
 
 INCQTILE = 'Income[%{:.0f}-%{:.0f}]'
 RENTQTILE = 'Rent[%{:.0f}-%{:.0f}]'
@@ -110,7 +110,7 @@ def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwa
         yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
                 
 def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
-    prices = dict(price=125000, rent=1500, sqftcost=0.5)    
+    prices = dict(price=100000, rent=500, sqftcost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
@@ -129,7 +129,7 @@ def plotHistory(history, *args, yearbuilt, sqft, rank, colors, period, **kwargs)
 
 def main(*args, **kwargs):
     history = Market_History()
-    market = createMarket(*args, history=history, stepsize=0.1, maxsteps=50, **kwargs)
+    market = createMarket(*args, history=history, stepsize=0.1, maxsteps=1000, **kwargs)
     market(*args, economy=economy, broker=broker, date=date, **kwargs)          
     plotHistory(history, *args, period=1, **kwargs)
 
