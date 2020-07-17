@@ -117,24 +117,37 @@ def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **k
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
     return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, **kwargs)
 
-def plotMarket(*args, yearbuilt, sqft, rank, colors, period, **kwargs):
+def plotMarket(history, *args, yearbuilt, sqft, rank, period, **kwargs):
     iyrblt, isqft, irank = np.meshgrid(*[np.arange(len(item['quantiles']) + 1) for item in (yearbuilt, sqft, rank,)])
     iyrblt, isqft, irank = [item.flatten() for item in (iyrblt, isqft, irank,)]
-    colors = [colors['codes'][index] for index in dict(yearbuilt=iyrblt, sqft=isqft, rank=irank)[colors['key']]]
-    fig = vis.figures.createplot((12, 12), title=None)
+    fig = vis.figures.createplot((14, 14), title=None)
     ax = vis.figures.createax(fig, x=1, y=1, pos=1)
-    vis.plots.line_plot(ax, history.table('price', period=period), colors=colors)
+    vis.plots.line_plot(ax, history.table(period))
     vis.figures.showplot(fig)
 
-def plotHousing(*args, **kwargs):
-    
+def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g', 'r', 'r'], **kwargs):
+    numaxes, x = np.prod([len(item['quantiles']) + 1 for item in (yearbuilt, sqft, rank,)]), 4
+    fig = vis.figures.createplot((14, 20), title=None)
+    for i in np.arange(numaxes):
+        ax = vis.figures.createax(fig, x=x, y=math.ceil(numaxes/x), pos=i+1)
+        vis.plots.line_plot(ax, history[i](period), colors=colors)
+    vis.figures.showplot(fig)
+    try: 
+        i = kwargs['index']
+        fig = vis.figures.createplot((10, 10), title=None)
+        ax = vis.figures.createax(fig, x=1, y=1, pos=1)
+        vis.plots.line_plot(ax, history[i](period), colors=colors)
+        vis.figures.showplot(fig)
+    except KeyError: pass
 
 
 def main(*args, **kwargs):
-    prices = Market_History()
-    market = createMarket(*args, prices=prices, stepsize=0.1, maxsteps=1000, **kwargs)
+    pricehistory = Market_History('price')
+    market = createMarket(*args, history=dict(prices=pricehistory), stepsize=0.1, maxsteps=250, **kwargs)
     market(*args, economy=economy, broker=broker, date=date, **kwargs)          
-    plotHistory(prices, *args, period=1, **kwargs)
+    plotMarket(pricehistory, *args, period=1, **kwargs)
+    plotHousing(pricehistory, *args, period=25, index=0, **kwargs)
+    
 
 if __name__ == "__main__": 
     inputParms = {}
@@ -144,7 +157,6 @@ if __name__ == "__main__":
     inputParms['yearbuilt'] = dict(lower=1950, upper=2010, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['sqft'] = dict(lower=1200, upper=3800, quantiles=[0.333, 0.666], function=uniform_pdf)
     inputParms['rank'] = dict(lower=0, upper=100, quantiles=[0.333, 0.666], function=uniform_pdf)
-    inputParms['colors'] = dict(key='sqft', codes=['r', 'g', 'b'])
     main(**inputParms)
 
 
