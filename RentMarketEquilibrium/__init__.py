@@ -8,11 +8,12 @@ from scipy.stats import norm, uniform, beta
 
 import visualization as vis
 from utilities.concepts import concept
+from utilities.convergence import History, MovingDampener, DeltaConverger
 from variables import Date, Geography
 from realestate.economy import Economy, Curve, Rate, Broker
 from realestate.households import Household
 from realestate.housing import Housing
-from realestate.markets import Personal_Property_Market, Market_History
+from realestate.markets import Personal_Property_Market
 
 pd.set_option('display.max_columns', 10)
 pd.set_option("display.precision", 0)
@@ -142,11 +143,13 @@ def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g',
 
 
 def main(*args, **kwargs):
-    pricehistory = Market_History('price')
-    market = createMarket(*args, history=dict(prices=pricehistory), stepsize=0.1, maxsteps=250, **kwargs)
+    history = History() 
+    converger = DeltaConverger(rtol=0.01, atol=0.005) 
+    dampener = MovingDampener(period=25, size=0.5, minimum=0.01)
+    market = createMarket(*args, stepsize=0.25, maxsteps=2500, history=history, converger=converger, dampener=dampener, **kwargs)
     market(*args, economy=economy, broker=broker, date=date, **kwargs)          
-    plotMarket(pricehistory, *args, period=1, **kwargs)
-    plotHousing(pricehistory, *args, period=25, index=0, **kwargs)
+    plotMarket(history, *args, period=1, **kwargs)
+    plotHousing(history, *args, period=25, index=0, **kwargs)
     
 
 if __name__ == "__main__": 
