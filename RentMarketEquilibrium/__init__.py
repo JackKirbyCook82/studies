@@ -116,7 +116,7 @@ def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **k
     hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
-    return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, **kwargs)
+    return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, economy=economy, broker=broker, date=date, **kwargs)
 
 def plotMarket(history, *args, yearbuilt, sqft, rank, period, **kwargs):
     iyrblt, isqft, irank = np.meshgrid(*[np.arange(len(item['quantiles']) + 1) for item in (yearbuilt, sqft, rank,)])
@@ -145,7 +145,7 @@ def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g',
 def main(*args, **kwargs):
     history = History() 
     converger = DeltaConverger(rtol=0.01, atol=0.005) 
-    dampener = MovingDampener(period=25, size=0.5, minimum=0.01)
+    dampener = MovingDampener(period=100, size=0.25, minimum=0.001)
     market = createMarket(*args, stepsize=0.25, maxsteps=2500, history=history, converger=converger, dampener=dampener, **kwargs)
     market(*args, economy=economy, broker=broker, date=date, **kwargs)          
     plotMarket(history, *args, period=1, **kwargs)
