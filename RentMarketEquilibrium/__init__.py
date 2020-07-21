@@ -8,7 +8,7 @@ from scipy.stats import norm, uniform, beta
 
 import visualization as vis
 from utilities.concepts import concept
-from utilities.convergence import History, DurationDampener, ErrorConverger, ConvergenceError
+from utilities.convergence import History, DurationDampener, OscillationDampener, ErrorConverger, OscillationConverger, ConvergenceError
 from variables import Date, Geography
 from realestate.economy import Economy, Curve, Rate, Broker
 from realestate.households import Household
@@ -145,7 +145,9 @@ def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g',
 def main(*args, **kwargs):
     history = History() 
     converger = ErrorConverger(rtol=0.01, atol=0.005) 
+#    converger =  OscillationConverger()
     dampener = DurationDampener(period=25, size=0.1)
+#    dampener = OscillationDampener(period=25, size=0.1, threshold=0.25, smoothing=2)
     market = createMarket(*args, stepsize=0.1, maxsteps=500, history=history, converger=converger, dampener=dampener, **kwargs)
     try: market(*args, economy=economy, broker=broker, date=date, **kwargs)          
     except ConvergenceError:  pass
