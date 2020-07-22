@@ -24,7 +24,6 @@ np.set_printoptions(precision=5, linewidth=150, suppress=True)
 INCQTILE = 'Income[%{:.0f}-%{:.0f}]'
 RENTQTILE = 'Rent[%{:.0f}-%{:.0f}]'
 FILENAME = 'RentMarketEquilibrium'
-LIFETIMES = {'adulthood':15, 'retirement':65, 'death':95}  
 
 lornez_function = lambda x, a: x * math.exp(-a * (1-x))
 lornez_integral = lambda a: (math.exp(-a) + a - 1) / (a**2)
@@ -68,11 +67,8 @@ def meshdistribution(*args, distributions, **kwargs):
     return sizes.astype('float64'), tuple([*values.astype('int64')])
 
 
-Space = concept('space', ['unit', 'sqft'])
-Quality = concept('quality', ['yearbuilt'])
-Location = concept('location', ['rank'])
-Housing.customize(concepts=dict(space=Space, quality=Quality, location=Location), parameters=('space', 'quality', 'location',))
-Household.customize(lifetimes=LIFETIMES)
+Housing.customize(parameters=('location', 'quality', 'size',), concepts=())
+Household.customize(parameters=(), lifetimes={'adulthood':15, 'retirement':65, 'death':95}  )
 
 income_profile = np.array([12000, 24000, 75000, 125000]) / 12
 saving_profile = np.array([0, 0.05, 0.10, 0.15]) 
@@ -87,59 +83,43 @@ date = Date({'year':2010})
 broker = Broker(commissions=0.06) 
 economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)    
    
-preferences = dict(housing_income_ratio=0.35, size_quality_ratio=100/5, size_location_ratio=300/10)
-poverty = dict(poverty_sqft=100, poverty_yearbuilt=1930, poverty_consumption=(12000/12)*0.65)
-household = dict(age=30, race='White', education='Bachelors', children='W/OChildren', size=1, language='English', **preferences, **poverty)
-financials = dict(risktolerance=1, discountrate=0.018, savingrate=savingrate)
-housing = dict(unit='House', valuerate=valuerate, rentrate=rentrate)    
-neighborhood = dict()   
-
 
 def createHouseholds(size, density, incomes, *args, economy, **kwargs):
     assert all([isinstance(item, np.ndarray) for item in (density, incomes,)])
     assert density.shape == incomes.shape
     for x, inc in zip(density.flatten(), incomes.flatten()):
         count = np.ceil(x * size).astype('int64')
-        yield Household.create(date=date, household=dict(count=count, **household), financials=dict(income=inc, **financials), economy=economy)
+        financials={'income':inc, 'risktolerance':1, 'discountrate':0.018, 'savingrate':savingrate}
+        yield Household.create(count=count, date=date, age=30, household={}, financials=financials, economy=economy)
     
-def createHousings(size, density, yearbuilts, sqfts, ranks, *args, prices, **kwargs):
-    assert all([isinstance(item, np.ndarray) for item in (density, yearbuilts, sqfts, ranks,)])
-    assert density.shape == yearbuilts.shape == sqfts.shape == ranks.shape
-    for x, yrblt, sqft, rank in zip(density.flatten(), yearbuilts.flatten(), sqfts.flatten(), ranks.flatten()): 
-        geography = Geography({'state':1, 'county':rank})
+def createHousings(size, density, locations, qualities, sizes, *args, prices, **kwargs):
+    assert all([isinstance(item, np.ndarray) for item in (density, locations, qualities, sizes,)])
+    assert density.shape == locations.shape == qualities.shape == sizes.shape
+    for x, loc, qual, size in zip(density.flatten(), locations.flatten(), qualities.flatten(), sizes.flatten()): 
+        geography = Geography({'state':1, 'county':loc})
         count = np.ceil(x * size).astype('int64')
-        yield Housing.create(geography=geography, date=date, housing=dict(count=count, yearbuilt=yrblt, sqft=sqft, rank=rank, **housing), neighborhood=neighborhood, prices=prices)
+        housing={'location':loc, 'quality':qual, 'size':size, 'valuerate':valuerate, 'rentrate':rentrate}
+        yield Housing.create(count=count, date=date, geography=geography, housing=housing, prices=prices)
                 
-def createMarket(*args, households, housings, income, yearbuilt, sqft, rank, **kwargs):
+def createMarket(*args, households, housings, income, locations, qualities, sizes, **kwargs):
     prices = dict(price=100000, rent=500, sqftcost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
-    hgsizes, hgvalues = meshdistribution(*args, distributions=[yearbuilt, sqft, rank], **kwargs)
+    hgsizes, hgvalues = meshdistribution(*args, distributions=[locations, qualities, sizes], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
     return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, economy=economy, broker=broker, date=date, **kwargs)
 
-def plotMarket(history, *args, yearbuilt, sqft, rank, period, **kwargs):
-    iyrblt, isqft, irank = np.meshgrid(*[np.arange(len(item['quantiles']) + 1) for item in (yearbuilt, sqft, rank,)])
-    iyrblt, isqft, irank = [item.flatten() for item in (iyrblt, isqft, irank,)]
+def plotMarket(history, *args, period, **kwargs):
     fig = vis.figures.createplot((14, 14), title=None)
     ax = vis.figures.createax(fig, x=1, y=1, pos=1)
     vis.plots.line_plot(ax, history.table(period))
     vis.figures.showplot(fig)
 
-def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g', 'r', 'r'], **kwargs):
-    numaxes, x = np.prod([len(item['quantiles']) + 1 for item in (yearbuilt, sqft, rank,)]), 4
-    fig = vis.figures.createplot((14, 20), title=None)
-    for i in np.arange(numaxes):
-        ax = vis.figures.createax(fig, x=x, y=math.ceil(numaxes/x), pos=i+1)
-        vis.plots.line_plot(ax, history[i](period), colors=colors)
+def plotHousing(history, index, *args, period, colors=['b', 'g', 'r', 'r'], **kwargs):
+    fig = vis.figures.createplot((10, 10), title=None)
+    ax = vis.figures.createax(fig, x=1, y=1, pos=1)
+    vis.plots.line_plot(ax, history[index](period), colors=colors)
     vis.figures.showplot(fig)
-    try: 
-        i = kwargs['index']
-        fig = vis.figures.createplot((10, 10), title=None)
-        ax = vis.figures.createax(fig, x=1, y=1, pos=1)
-        vis.plots.line_plot(ax, history[i](period), colors=colors)
-        vis.figures.showplot(fig)
-    except KeyError: pass
 
 
 def main(*args, **kwargs):
@@ -150,7 +130,7 @@ def main(*args, **kwargs):
     try: market(*args, economy=economy, broker=broker, date=date, **kwargs)          
     except ConvergenceError:  pass
     plotMarket(history, *args, period=1, **kwargs)
-    plotHousing(history, *args, period=25, index=0, **kwargs)
+    plotHousing(history, 0, *args, period=25, index=0, **kwargs)
     
 
 if __name__ == "__main__": 
@@ -158,9 +138,9 @@ if __name__ == "__main__":
     inputParms['households'] = 1100
     inputParms['housings'] = 1000
     inputParms['income'] = dict(average=50000/12, gini=0.3, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], function=lornez_function, integral=lornez_integral)
-    inputParms['yearbuilt'] = dict(lower=1950, upper=2010, quantiles=[0.333, 0.666], function=uniform_pdf)
-    inputParms['sqft'] = dict(lower=1200, upper=3800, quantiles=[0.333, 0.666], function=uniform_pdf)
-    inputParms['rank'] = dict(lower=0, upper=100, quantiles=[0.333, 0.666], function=uniform_pdf)
+#    inputParms['location'] = dict(lower=, upper=, quantiles=[], function=uniform_pdf)
+#    inputParms['quality'] = dict(lower=, upper=, quantiles=[], function=uniform_pdf)
+#    inputParms['size'] = dict(lower=, upper=, quantiles=[], function=uniform_pdf)
     main(**inputParms)
 
 
