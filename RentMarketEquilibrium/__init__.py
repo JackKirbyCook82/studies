@@ -144,7 +144,7 @@ def plotHousing(history, *args, yearbuilt, sqft, rank, period, colors=['b', 'g',
 
 def main(*args, **kwargs):
     history = History() 
-    converger =  OscillationConverger(period=25, tolerance=25)
+    converger =  OscillationConverger(period=50, btol=25, ttol=1, otol=0.5)
     dampener = DurationDampener(period=25, size=0.1)
     market = createMarket(*args, stepsize=0.1, maxsteps=500, history=history, converger=converger, dampener=dampener, **kwargs)
     try: market(*args, economy=economy, broker=broker, date=date, **kwargs)          
