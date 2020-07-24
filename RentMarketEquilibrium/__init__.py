@@ -77,7 +77,7 @@ inflationrate = Rate.flat(2000, 0, basis='year')
 
 date = Date({'year':2010}) 
 broker = Broker(commissions=0.06) 
-economy = Economy(date=Date({'year':2000}), purchasingpower=1, wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)    
+economy = Economy(date=Date({'year':2000}), wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)    
    
 
 def createHouseholds(count, density, incomes, *args, economy, **kwargs):
