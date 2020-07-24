@@ -7,10 +7,9 @@ from scipy.optimize import fsolve
 from scipy.stats import norm, uniform, beta
 
 import visualization as vis
-from utilities.concepts import concept
 from utilities.convergence import History, DurationDampener, OscillationConverger, ConvergenceError
 from variables import Date, Geography
-from realestate.economy import Economy, Curve, Rate, Broker
+from realestate.economy import Economy, Rate, Broker
 from realestate.households import Household
 from realestate.housing import Housing
 from realestate.markets import Personal_Property_Market
@@ -55,7 +54,7 @@ def distribution(*args, quantiles, function, **kwargs):
     sizes = np.diff(quantiles)  
     avgquantiles = (quantiles[1:] + quantiles[:-1])/2
     avgvalues = function(avgquantiles, **kwargs)
-    return sizes.astype('float64'), avgvalues.astype('int64')
+    return sizes.astype('float64'), avgvalues.astype('float64')
 
 def meshdistribution(*args, distributions, **kwargs):
     assert isinstance(distributions, list)
@@ -64,15 +63,12 @@ def meshdistribution(*args, distributions, **kwargs):
     yvalues = [y.flatten() for y in np.meshgrid(*[items[1] for items in distributions])]    
     sizes = np.array([np.prod(list(x)) for x in zip(*xvalues)])
     values = np.array([np.array(list(y)) for y in zip(*yvalues)]).transpose()
-    return sizes.astype('float64'), tuple([*values.astype('int64')])
+    return sizes.astype('float64'), tuple([*values.astype('float64')])
 
 
-Housing.customize(parameters=('location', 'quality', 'size',), concepts=dict())
+Housing.customize(parameters=('location', 'quality', 'space',), concepts=dict())
 Household.customize(parameters=tuple(), lifetimes={'adulthood':15, 'retirement':65, 'death':95})
 
-income_profile = np.array([12000, 24000, 75000, 125000]) / 12
-saving_profile = np.array([0, 0.05, 0.10, 0.15]) 
-savingrate = Curve(income_profile, saving_profile, extrapolate='last', method='linear')
 wealthrate = Rate.flat(2000, 0.02, basis='year')    
 valuerate = Rate.flat(2000, 0.05, basis='year')
 rentrate = Rate.flat(2000, 0.035, basis='year')     
@@ -89,21 +85,21 @@ def createHouseholds(count, density, incomes, *args, economy, **kwargs):
     assert density.shape == incomes.shape
     for x, inc in zip(density.flatten(), incomes.flatten()):
         i = np.ceil(x * count).astype('int64')
-        financials = {'income':inc, 'risktolerance':1, 'discountrate':0.018, 'savingrate':savingrate}
+        financials = {'income':inc, 'risktolerance':1, 'discountrate':0.018}
         yield Household.create(count=i, date=date, age=30, household={}, financials=financials, economy=economy)
     
-def createHousings(count, density, locations, qualities, sizes, *args, prices, **kwargs):
-    assert all([isinstance(item, np.ndarray) for item in (density, locations, qualities, sizes,)])
-    for x, loc, qual, size in zip(density.flatten(), locations.flatten(), qualities.flatten(), sizes.flatten()): 
+def createHousings(count, density, locations, qualities, spaces, *args, prices, **kwargs):
+    assert all([isinstance(item, np.ndarray) for item in (density, locations, qualities, spaces,)])
+    for x, loc, qual, space in zip(density.flatten(), locations.flatten(), qualities.flatten(), spaces.flatten()): 
         geography = Geography({'state':1, 'county':loc})
         i = np.ceil(x * count).astype('int64')
-        housing = {'location':loc, 'quality':qual, 'size':size, 'valuerate':valuerate, 'rentrate':rentrate}
+        housing = {'location':loc, 'quality':qual, 'space':space, 'valuerate':valuerate, 'rentrate':rentrate}
         yield Housing.create(count=i, date=date, geography=geography, housing=housing, prices=prices)
                 
-def createMarket(*args, households, housings, income, locations, qualities, sizes, **kwargs):
+def createMarket(*args, households, housings, income, locations, qualities, spaces, **kwargs):
     prices = dict(price=100000, rent=500, cost=0.5)    
     hhsizes, hhvalues = lornez(*args, **income, **kwargs)
-    hgsizes, hgvalues = meshdistribution(*args, distributions=[locations, qualities, sizes], **kwargs)
+    hgsizes, hgvalues = meshdistribution(*args, distributions=[locations, qualities, spaces], **kwargs)
     ihouseholds = [ihousehold for ihousehold in createHouseholds(households, hhsizes, hhvalues, economy=economy)]
     ihousings = [ihousing for ihousing in createHousings(housings, hgsizes, *hgvalues, prices=prices)]
     return Personal_Property_Market('renter', *args, households=ihouseholds, housings=ihousings, economy=economy, broker=broker, date=date, **kwargs)
@@ -134,12 +130,12 @@ def main(*args, **kwargs):
 
 if __name__ == "__main__": 
     inputParms = {}
-    inputParms['households'] = 1500
+    inputParms['households'] = 1250
     inputParms['housings'] = 1000
-    inputParms['income'] = dict(average=50000/12, gini=0.3, quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], function=lornez_function, integral=lornez_integral)
-    inputParms['locations'] = dict(lower=1, upper=100, quantiles=[0.5], function=uniform_pdf)
-    inputParms['qualities'] = dict(lower=1, upper=100, quantiles=[0.5], function=uniform_pdf)
-    inputParms['sizes'] = dict(lower=1, upper=100, quantiles=[0.5], function=uniform_pdf)
+    inputParms['income'] = dict(average=60000/12, gini=0.3, quantiles=[0.2, 0.4, 0.6, 0.8], function=lornez_function, integral=lornez_integral)
+    inputParms['locations'] = dict(lower=0, upper=2, quantiles=[0.5], function=uniform_pdf)
+    inputParms['qualities'] = dict(lower=0, upper=2, quantiles=[0.5], function=uniform_pdf)
+    inputParms['spaces'] = dict(lower=0, upper=2, quantiles=[0.5], function=uniform_pdf)
     main(**inputParms)
 
 
