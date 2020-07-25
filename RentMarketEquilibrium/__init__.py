@@ -74,10 +74,12 @@ valuerate = Rate.flat(2000, 0.05, basis='year')
 rentrate = Rate.flat(2000, 0.035, basis='year')     
 incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
+depreciationrate = Rate.flat(2000, 0, basis='year')
 
 date = Date({'year':2010}) 
 broker = Broker(commissions=0.06) 
-economy = Economy(date=Date({'year':2000}), wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate)    
+rates = dict(wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate, depreciationrate=depreciationrate)    
+economy = Economy(date=Date({'year':2000}), purchasepower=1, housingpower=1000, **rates)
    
 
 def createHouseholds(count, density, incomes, *args, economy, **kwargs):
