@@ -76,6 +76,10 @@ incomerate = Rate.flat(2000, 0.035, basis='year')
 inflationrate = Rate.flat(2000, 0, basis='year')
 depreciationrate = Rate.flat(2000, 0, basis='year')
 
+elasticity_substitution = 2
+housing_expense_ratio = 0.3
+housing_index_ratios = {'location':1/3, 'quality':1/3, 'space':1/3}
+
 date = Date({'year':2010}) 
 broker = Broker(commissions=0.06) 
 rates = dict(wealthrate=wealthrate, incomerate=incomerate, inflationrate=inflationrate, depreciationrate=depreciationrate)    
@@ -88,7 +92,8 @@ def createHouseholds(count, density, incomes, *args, economy, **kwargs):
     for x, inc in zip(density.flatten(), incomes.flatten()):
         i = np.ceil(x * count).astype('int64')
         financials = {'income':inc, 'risktolerance':1, 'discountrate':0.018}
-        yield Household.create(count=i, date=date, age=30, household={}, financials=financials, economy=economy)
+        household = {'elasticity_substitution':elasticity_substitution, 'housing_expense_ratio':housing_expense_ratio, 'housing_index_ratios':housing_index_ratios}
+        yield Household.create(count=i, date=date, age=30, household=household, financials=financials, economy=economy)
     
 def createHousings(count, density, locations, qualities, spaces, *args, prices, **kwargs):
     assert all([isinstance(item, np.ndarray) for item in (density, locations, qualities, spaces,)])
